@@ -1,41 +1,39 @@
-FROM python:3.11-bullseye
-
+# Optimized Dockerfile for Render deployment
+# No Playwright - uses requests + BeautifulSoup instead
+ 
+FROM python:3.11-slim
+ 
+# Prevent Python from writing pyc files and buffering stdout/stderr
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV PLAYWRIGHT_BROWSERS_PATH=0
-
+ 
+# Set working directory
 WORKDIR /app
-
-RUN apt-get update && apt-get install -y \
-    wget \
+ 
+# Install system dependencies (minimal - just what's needed)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    gnupg \
-    ca-certificates \
-    fonts-liberation \
-    libappindicator3-1 \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcups2 \
-    libdbus-1-3 \
-    libgdk-pixbuf2.0-0 \
-    libnspr4 \
-    libnss3 \
-    libx11-xcb1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    libu2f-udev \
-    libxss1 \
-    libgtk-3-0 \
-    chromium \
-    chromium-driver \
-    xdg-utils && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
+&& apt-get clean \
+&& rm -rf /var/lib/apt/lists/*
+ 
+# Copy requirements and install Python dependencies
 COPY requirements.txt .
-
+RUN pip install --no-cache-dir -r requirements.txt
+ 
+# Copy application code
 COPY app.py .
-
-EXPOSE 8000
-CMD ["gunicorn", "-b", "0.0.0.0:8000", "app:app"]
+ 
+# Render uses PORT environment variable
+# Default to 8000 if not set
+ENV PORT=8000
+ 
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:${PORT}/ || exit 1
+ 
+# Expose the port (Render will override this with PORT env var)
+EXPOSE ${PORT}
+ 
+# Run with gunicorn
+# Render will provide PORT environment variable
+CMD gunicorn --bind 0.0.0.0:${PORT} --workers 2 --timeout 30 --access-logfile - --error-logfile - app:app
